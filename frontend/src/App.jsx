@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://smart-plant-care-watering-system.onrender.com";
 const DEVICE_ID = "PLANT-001";
 
 function App() {
