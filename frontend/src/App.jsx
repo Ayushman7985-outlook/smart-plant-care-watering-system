@@ -4,6 +4,9 @@ import "./App.css";
 const API = "https://smart-plant-care-watering-system.onrender.com";
 const DEVICE_ID = "PLANT-001";
 
+const LIVE_REFRESH_INTERVAL = 30000; // 30 seconds
+const HEAVY_REFRESH_INTERVAL = 120000; // 2 minutes
+
 function App() {
   const [latest, setLatest] = useState(null);
   const [history, setHistory] = useState([]);
@@ -17,24 +20,18 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
-  async function fetchData() {
+  async function fetchLiveData() {
     try {
       const [
         latestResponse,
-        historyResponse,
         pumpResponse,
         autoResponse,
         thresholdResponse,
-        alertsResponse,
-        analyticsResponse,
       ] = await Promise.all([
         fetch(`${API}/api/devices/${DEVICE_ID}/latest`),
-        fetch(`${API}/api/devices/${DEVICE_ID}/history`),
         fetch(`${API}/api/devices/${DEVICE_ID}/pump-status`),
         fetch(`${API}/api/devices/${DEVICE_ID}/auto-status`),
         fetch(`${API}/api/devices/${DEVICE_ID}/threshold`),
-        fetch(`${API}/api/devices/${DEVICE_ID}/alerts`),
-        fetch(`${API}/api/devices/${DEVICE_ID}/analytics`),
       ]);
 
       if (!latestResponse.ok) {
@@ -42,36 +39,89 @@ function App() {
       }
 
       const latestData = await latestResponse.json();
-      const historyData = await historyResponse.json();
       const pumpData = await pumpResponse.json();
       const autoData = await autoResponse.json();
       const thresholdData = await thresholdResponse.json();
-      const alertsData = await alertsResponse.json();
-      const analyticsData = await analyticsResponse.json();
 
       setLatest(latestData);
-      setHistory(historyData.readings || []);
       setPumpStatus(pumpData.pump_status || "OFF");
       setAutoWatering(autoData.auto_watering_enabled ?? true);
-      setThreshold(thresholdData.moisture_threshold ?? 30);
-      setThresholdInput(thresholdData.moisture_threshold ?? 30);
-      setAlerts(alertsData.alerts || []);
-      setAnalytics(analyticsData);
+
+      const currentThreshold =
+        thresholdData.moisture_threshold ?? 30;
+
+      setThreshold(currentThreshold);
+      setThresholdInput(currentThreshold);
+
       setBackendOnline(true);
     } catch (error) {
-      console.error(error);
+      console.error("Live data error:", error);
       setBackendOnline(false);
     } finally {
       setLoading(false);
     }
   }
 
+  async function fetchHeavyData() {
+    try {
+      const [
+        historyResponse,
+        alertsResponse,
+        analyticsResponse,
+      ] = await Promise.all([
+        fetch(`${API}/api/devices/${DEVICE_ID}/history`),
+        fetch(`${API}/api/devices/${DEVICE_ID}/alerts`),
+        fetch(`${API}/api/devices/${DEVICE_ID}/analytics`),
+      ]);
+
+      if (!historyResponse.ok) {
+        throw new Error("History request failed");
+      }
+
+      if (!alertsResponse.ok) {
+        throw new Error("Alerts request failed");
+      }
+
+      if (!analyticsResponse.ok) {
+        throw new Error("Analytics request failed");
+      }
+
+      const historyData = await historyResponse.json();
+      const alertsData = await alertsResponse.json();
+      const analyticsData = await analyticsResponse.json();
+
+      setHistory(historyData.readings || []);
+      setAlerts(alertsData.alerts || []);
+      setAnalytics(analyticsData);
+    } catch (error) {
+      console.error("Heavy data error:", error);
+    }
+  }
+
+  async function fetchAllData() {
+    await Promise.all([
+      fetchLiveData(),
+      fetchHeavyData(),
+    ]);
+  }
+
   useEffect(() => {
-    fetchData();
+    fetchAllData();
 
-    const interval = setInterval(fetchData, 5000);
+    const liveInterval = setInterval(
+      fetchLiveData,
+      LIVE_REFRESH_INTERVAL
+    );
 
-    return () => clearInterval(interval);
+    const heavyInterval = setInterval(
+      fetchHeavyData,
+      HEAVY_REFRESH_INTERVAL
+    );
+
+    return () => {
+      clearInterval(liveInterval);
+      clearInterval(heavyInterval);
+    };
   }, []);
 
   async function manualWater() {
@@ -85,10 +135,14 @@ function App() {
 
       const data = await response.json();
 
-      setMessage(data.watering?.message || data.message);
+      setMessage(
+        data.watering?.message || data.message
+      );
 
-      fetchData();
+      await fetchLiveData();
+      await fetchHeavyData();
     } catch (error) {
+      console.error(error);
       setMessage("Unable to activate virtual pump.");
     }
   }
@@ -109,8 +163,9 @@ function App() {
       setAutoWatering(data.auto_watering_enabled);
       setMessage(data.message);
 
-      fetchData();
+      await fetchLiveData();
     } catch (error) {
+      console.error(error);
       setMessage("Unable to change automatic watering.");
     }
   }
@@ -133,10 +188,12 @@ function App() {
       const data = await response.json();
 
       setThreshold(data.moisture_threshold);
+      setThresholdInput(data.moisture_threshold);
       setMessage(data.message);
 
-      fetchData();
+      await fetchLiveData();
     } catch (error) {
+      console.error(error);
       setMessage("Unable to update threshold.");
     }
   }
@@ -159,7 +216,9 @@ function App() {
       <header className="header">
         <div>
           <h1>🌱 Smart Plant Care</h1>
-          <p>Cloud-Connected IoT Plant Monitoring System</p>
+          <p>
+            Cloud-Connected IoT Plant Monitoring System
+          </p>
         </div>
 
         <div className="device-status">
@@ -169,7 +228,9 @@ function App() {
             }`}
           ></span>
 
-          {backendOnline ? "Backend Online" : "Backend Offline"}
+          {backendOnline
+            ? "Backend Online"
+            : "Backend Offline"}
         </div>
       </header>
 
@@ -177,7 +238,9 @@ function App() {
         {message && (
           <div className="message">
             {message}
-            <button onClick={() => setMessage("")}>×</button>
+            <button onClick={() => setMessage("")}>
+              ×
+            </button>
           </div>
         )}
 
@@ -191,28 +254,36 @@ function App() {
               <div className="card">
                 <span className="card-icon">💧</span>
                 <h3>Soil Moisture</h3>
-                <div className="big-value">{moisture}%</div>
+                <div className="big-value">
+                  {moisture}%
+                </div>
                 <p>Threshold: {threshold}%</p>
               </div>
 
               <div className="card">
                 <span className="card-icon">🌡️</span>
                 <h3>Temperature</h3>
-                <div className="big-value">{temperature}°C</div>
+                <div className="big-value">
+                  {temperature}°C
+                </div>
                 <p>Air temperature</p>
               </div>
 
               <div className="card">
                 <span className="card-icon">💨</span>
                 <h3>Humidity</h3>
-                <div className="big-value">{humidity}%</div>
+                <div className="big-value">
+                  {humidity}%
+                </div>
                 <p>Air humidity</p>
               </div>
 
               <div className="card">
                 <span className="card-icon">☀️</span>
                 <h3>Light Level</h3>
-                <div className="big-value">{light}%</div>
+                <div className="big-value">
+                  {light}%
+                </div>
                 <p>Ambient light</p>
               </div>
             </section>
@@ -221,6 +292,7 @@ function App() {
               <div className="panel">
                 <div className="panel-header">
                   <h2>Plant Status</h2>
+
                   <span
                     className={`plant-badge ${
                       plantStatus === "Healthy"
@@ -242,6 +314,7 @@ function App() {
 
                   <div>
                     <strong>Virtual Pump</strong>
+
                     <span
                       className={
                         pumpStatus === "ON"
@@ -255,8 +328,11 @@ function App() {
 
                   <div>
                     <strong>Automatic Watering</strong>
+
                     <span>
-                      {autoWatering ? "Enabled" : "Disabled"}
+                      {autoWatering
+                        ? "Enabled"
+                        : "Disabled"}
                     </span>
                   </div>
                 </div>
@@ -271,7 +347,9 @@ function App() {
 
                   <button
                     className={`secondary-button ${
-                      autoWatering ? "enabled-button" : ""
+                      autoWatering
+                        ? "enabled-button"
+                        : ""
                     }`}
                     onClick={toggleAutoWatering}
                   >
@@ -292,7 +370,9 @@ function App() {
                     max="100"
                     value={thresholdInput}
                     onChange={(event) =>
-                      setThresholdInput(event.target.value)
+                      setThresholdInput(
+                        event.target.value
+                      )
                     }
                   />
 
@@ -307,8 +387,8 @@ function App() {
                 </div>
 
                 <p className="helper-text">
-                  Automatic watering starts when soil moisture
-                  drops below this value.
+                  Automatic watering starts when soil
+                  moisture drops below this value.
                 </p>
               </div>
             </section>
@@ -316,34 +396,42 @@ function App() {
             <section className="panel">
               <div className="panel-header">
                 <h2>Moisture History</h2>
-                <span>{history.length} readings</span>
+                <span>
+                  {history.length} readings
+                </span>
               </div>
 
               <div className="chart">
                 {history.length === 0 ? (
-                  <p>No sensor readings available yet.</p>
+                  <p>
+                    No sensor readings available yet.
+                  </p>
                 ) : (
-                  history.slice(-20).map((reading, index) => (
-                    <div
-                      className="bar-wrapper"
-                      key={`${reading.timestamp}-${index}`}
-                    >
+                  history.slice(-20).map(
+                    (reading, index) => (
                       <div
-                        className="bar"
-                        style={{
-                          height: `${Math.max(
-                            8,
-                            reading.soil_moisture
-                          )}%`,
-                        }}
-                        title={`Moisture: ${reading.soil_moisture}%`}
-                      ></div>
+                        className="bar-wrapper"
+                        key={`${reading.timestamp}-${index}`}
+                      >
+                        <div
+                          className="bar"
+                          style={{
+                            height: `${Math.max(
+                              8,
+                              reading.soil_moisture
+                            )}%`,
+                          }}
+                          title={`Moisture: ${reading.soil_moisture}%`}
+                        ></div>
 
-                      <span>
-                        {Math.round(reading.soil_moisture)}
-                      </span>
-                    </div>
-                  ))
+                        <span>
+                          {Math.round(
+                            reading.soil_moisture
+                          )}
+                        </span>
+                      </div>
+                    )
+                  )
                 )}
               </div>
             </section>
