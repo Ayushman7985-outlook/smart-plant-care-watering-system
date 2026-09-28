@@ -560,7 +560,7 @@ function App() {
       </main>
 
       <footer>
-        Smart Plant Care & Watering System • EDC IIT Delhi
+        Smart Plant Care & Watering System 
       </footer>
     </div>
   );
