@@ -5,7 +5,7 @@ const API = "https://smart-plant-care-watering-system.onrender.com";
 const DEVICE_ID = "PLANT-001";
 
 const LIVE_REFRESH_INTERVAL = 30000; // 30 seconds
-const HEAVY_REFRESH_INTERVAL = 120000; // 2 minutes
+const HEAVY_REFRESH_INTERVAL = 600000; // 10 minutes
 
 function App() {
   const [latest, setLatest] = useState(null);
@@ -25,33 +25,20 @@ function App() {
       const [
         latestResponse,
         pumpResponse,
-        autoResponse,
-        thresholdResponse,
       ] = await Promise.all([
         fetch(`${API}/api/devices/${DEVICE_ID}/latest`),
         fetch(`${API}/api/devices/${DEVICE_ID}/pump-status`),
-        fetch(`${API}/api/devices/${DEVICE_ID}/auto-status`),
-        fetch(`${API}/api/devices/${DEVICE_ID}/threshold`),
       ]);
 
-      if (!latestResponse.ok) {
+      if (!latestResponse.ok || !pumpResponse.ok) {
         throw new Error("Backend request failed");
       }
 
       const latestData = await latestResponse.json();
       const pumpData = await pumpResponse.json();
-      const autoData = await autoResponse.json();
-      const thresholdData = await thresholdResponse.json();
 
       setLatest(latestData);
       setPumpStatus(pumpData.pump_status || "OFF");
-      setAutoWatering(autoData.auto_watering_enabled ?? true);
-
-      const currentThreshold =
-        thresholdData.moisture_threshold ?? 30;
-
-      setThreshold(currentThreshold);
-      setThresholdInput(currentThreshold);
 
       setBackendOnline(true);
     } catch (error) {
@@ -59,6 +46,37 @@ function App() {
       setBackendOnline(false);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchConfiguration() {
+    try {
+      const [
+        autoResponse,
+        thresholdResponse,
+      ] = await Promise.all([
+        fetch(`${API}/api/devices/${DEVICE_ID}/auto-status`),
+        fetch(`${API}/api/devices/${DEVICE_ID}/threshold`),
+      ]);
+
+      if (autoResponse.ok) {
+        const autoData = await autoResponse.json();
+        setAutoWatering(
+          autoData.auto_watering_enabled ?? true
+        );
+      }
+
+      if (thresholdResponse.ok) {
+        const thresholdData = await thresholdResponse.json();
+
+        const currentThreshold =
+          thresholdData.moisture_threshold ?? 30;
+
+        setThreshold(currentThreshold);
+        setThresholdInput(currentThreshold);
+      }
+    } catch (error) {
+      console.error("Configuration data error:", error);
     }
   }
 
@@ -101,6 +119,7 @@ function App() {
   async function fetchAllData() {
     await Promise.all([
       fetchLiveData(),
+      fetchConfiguration(),
       fetchHeavyData(),
     ]);
   }
