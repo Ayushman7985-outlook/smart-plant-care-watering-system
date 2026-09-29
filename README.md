@@ -12,7 +12,6 @@ The project demonstrates an end-to-end IoT-to-cloud workflow without requiring p
 
 **API Documentation:** https://smart-plant-care-watering-system.onrender.com/docs
 
-**GitHub Repository:** https://github.com/Ayushman7985-outlook/smart-plant-care-watering-system
 
 ## 📌 Overview
 
