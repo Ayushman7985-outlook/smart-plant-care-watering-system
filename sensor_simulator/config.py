@@ -3,8 +3,8 @@ API_URL = "https://smart-plant-care-watering-system.onrender.com/api/sensors/dat
 DEVICE_ID = "PLANT-001"
 
 # How often the simulator sends a reading.
-# We will use 30 seconds for development/testing.
-SIMULATION_INTERVAL =30
+# We will use 40 seconds for development/testing.
+SIMULATION_INTERVAL = 40
 
 # Initial sensor values
 INITIAL_SOIL_MOISTURE = 55.0
